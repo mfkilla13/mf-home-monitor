@@ -229,8 +229,8 @@ const DEFAULT_LAYOUT = {
   cable: "M1442 553 C1440 600 1432 632 1405 629 C1378 626 1382 578 1392 531",
   // Charging current: standing "hologram" in front of the bumper — x along the car front, y vertical.
   amps_text: [1115, 716], amps_text_matrix: [0.985, 0.17, 0, 1], amps_ground: [1118, 760, 105, 16],
-  // Home consumption: the same standing label on the steps in front of the door.
-  home_text: [560, 676], home_text_matrix: [0.995, 0.09, 0, 1], home_ground: [560, 700, 95, 15],
+  // Home consumption: the same standing label in front of the door, at its middle height.
+  home_text: [604, 575], home_text_matrix: [0.995, 0.09, 0, 1], home_ground: [604, 650, 95, 15],
   spots: {
     solar: [1040, 262], grid: [1563, 300], home: [640, 448], inverters: [952, 412], battery: [1030, 560],
     charger: [1458, 506], car: [1250, 478], street: [320, 640],
