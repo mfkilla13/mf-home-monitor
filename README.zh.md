@@ -63,7 +63,8 @@ entities:
 | 键 | 单位 | 用途 |
 |---|---|---|
 | `pv`, `pv1`, `pv2` | W | 光伏总功率、上排和下排光伏板 |
-| `grid`, `grid_voltage` | W, V | 电网购电、电线上方的电流 |
+| `grid`, `grid_voltage` | W, V | 电网功率（+ 购电 / − 上网）、电线上方的电流 |
+| `grid_export` | W | 可选：若电网传感器只显示购电，可单独提供上网功率传感器（≥ 0） |
 | `battery`, `soc`, `voltage` | W, %, V | 电池功率（+ 充电 / − 放电）、SOC、电压 |
 | `home`, `load` | W | 不含汽车的住宅功率；日图表的总负载 |
 | `ev`, `charger`, `charger_status`, `charger_current`, `charger_temp` | W, –, –, A, °C | 充电桩。状态值：`charging`、`available`、`charged`、`waiting`、`fault` |
@@ -79,6 +80,9 @@ entities:
 |---|---|---|
 | `image_night`, `image_day`, `image_winter_*`, `image_rain_*` | — | 图片；缺少的会使用最接近的一张 |
 | `no_car_images` | `false` | 汽车未连接 → 使用带 `_nocar` 后缀的同名文件 |
+| `invert_battery` | `false` | 电池传感器为 + 放电 / − 充电 |
+| `invert_grid` | `false` | 电网传感器为 + 上网 / − 购电 |
+| `charger_states` | 内置 | 映射自己充电桩的状态值，见下文 |
 | `winter_months` | `[12, 1, 2]` | 使用冬季图片的月份 |
 | `snow_below` | `1` | 降水时：等于或低于此温度（°C）显示雪景 |
 | `frameless` | `false` | 无卡片背景 —— 适用于背景与页面相同（`#111111`）的图片 |
@@ -93,6 +97,26 @@ entities:
 | `language` | HA 用户资料 | `en`、`ru`、`zh` |
 | `layout` | 附带图片的坐标 | 所有图层的坐标，见下文 |
 | `calibrate` | `false` | 自有图片的布局向导 |
+
+## 其他逆变器和充电桩
+
+卡片适用于任何集成 —— 只读取实体状态。默认约定：
+
+- **电池** 充电为 `+`，放电为 `−` → 否则设置 `invert_battery: true`；
+- **电网** 购电为 `+`，上网为 `−` → 否则设置 `invert_grid: true`，或添加单独的 `grid_export` 传感器。
+  上网会显示为从住宅流向电线杆的绿色能量流，电线上方带 `▶`；
+- **充电桩状态** `charging`、`available`（无车）、`waiting`（已连接）、`charged`、`fault`。
+  常见取值（`Disconnected`、`Connected`、`Charging`、`Complete`、`Error` 等）会自动识别；其他取值请映射：
+  ```yaml
+  charger_states:
+    charging: [Lädt]
+    available: [Frei, "No car"]
+    waiting: [Verbunden]
+  ```
+  `charger_states`、`invert_battery`、`invert_grid` 需写入每张显示这些数值的 MF 卡片（住宅、当前、日图表）；
+- `mf-days-chart` 默认使用午夜清零的**每日计数器**。累计计数器 → `total_counters: true`
+  （或键列表，例如 `[yield, import]`）；
+- **光伏板排数** 不限：在 `layout.panels` 中逐一列出，每排有自己的 `entity` 键，名称写在 `pv_names` 中。
 
 ## 使用自己的住宅图片
 

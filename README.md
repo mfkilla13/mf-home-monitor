@@ -63,7 +63,8 @@ Every entity is optional: anything you leave out hides the related layer, dot or
 | Key | Unit | Used for |
 |---|---|---|
 | `pv`, `pv1`, `pv2` | W | Total solar, upper and lower panel rows |
-| `grid`, `grid_voltage` | W, V | Grid import, amps above the wire |
+| `grid`, `grid_voltage` | W, V | Grid power (+ import / − export), amps above the wire |
+| `grid_export` | W | Optional: separate export sensor (≥ 0) if your grid sensor shows import only |
 | `battery`, `soc`, `voltage` | W, %, V | Battery power (+ charge / − discharge), SOC, voltage |
 | `home`, `load` | W | Home without the EV; total load for the day chart |
 | `ev`, `charger`, `charger_status`, `charger_current`, `charger_temp` | W, –, –, A, °C | EV charger. Status values: `charging`, `available`, `charged`, `waiting`, `fault` |
@@ -79,6 +80,9 @@ Every entity is optional: anything you leave out hides the related layer, dot or
 |---|---|---|
 | `image_night`, `image_day`, `image_winter_*`, `image_rain_*` | — | Pictures; a missing one falls back to the closest available |
 | `no_car_images` | `false` | Car not plugged in → same file with `_nocar` suffix |
+| `invert_battery` | `false` | Your battery sensor is + discharge / − charge |
+| `invert_grid` | `false` | Your grid sensor is + export / − import |
+| `charger_states` | built-in | Map your charger's status values, see below |
 | `winter_months` | `[12, 1, 2]` | Months with winter pictures |
 | `snow_below` | `1` | While it rains: at or below this °C — snow pictures |
 | `frameless` | `false` | No card background — for pictures with the page background (`#111111`) |
@@ -93,6 +97,27 @@ Every entity is optional: anything you leave out hides the related layer, dot or
 | `language` | HA profile | `en`, `ru`, `zh` |
 | `layout` | shipped pictures | Coordinates of all layers, see below |
 | `calibrate` | `false` | Layout wizard for your own picture |
+
+## Other inverters and chargers
+
+The cards work with any integration — they only read entity states. The defaults expect:
+
+- **battery** `+` while charging, `−` while discharging → otherwise `invert_battery: true`;
+- **grid** `+` import, `−` export → otherwise `invert_grid: true`, or add a separate `grid_export` sensor.
+  Export is drawn as a green flow from the house to the pole with `▶` above the wire;
+- **charger status** `charging`, `available` (no car), `waiting` (plugged in), `charged`, `fault`.
+  Common values (`Disconnected`, `Connected`, `Charging`, `Complete`, `Error`, …) are recognized automatically;
+  anything else — map it:
+  ```yaml
+  charger_states:
+    charging: [Lädt]
+    available: [Frei, "No car"]
+    waiting: [Verbunden]
+  ```
+  `charger_states`, `invert_battery`, `invert_grid` go to every MF card that shows these values (house, now, day chart);
+- **daily counters** that reset at midnight for `mf-days-chart`. Lifetime counters → `total_counters: true`
+  (or a list of keys, e.g. `[yield, import]`);
+- **panel rows**: any number — list them under `layout.panels`, each with its own `entity` key, and name them with `pv_names`.
 
 ## Your own house picture
 

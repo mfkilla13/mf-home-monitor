@@ -15,7 +15,7 @@
  * Languages: en, ru, zh (from HA profile or `language:`).
  */
 
-const VERSION = "1.0.0";
+const VERSION = "1.1.0";
 
 // ─── Languages ───────────────────────────────────────────────────────────────
 
@@ -35,6 +35,7 @@ const I18N = {
     st_charging: "charging", st_available: "not plugged in", st_charged: "charged", st_waiting: "waiting", st_fault: "fault",
     solar_today: "solar", home_sub: "home without EV", charge_w: "charge", discharge_w: "discharge",
     limit: "limit", input: "input", stop: "stop", protect: "protection",
+    export: "Export", export_now: "Export now",
     cal_title: "Layout wizard",
     cal_step: "Step",
     cal_back: "Back",
@@ -90,6 +91,7 @@ const I18N = {
     st_charging: "заряжает", st_available: "не подключена", st_charged: "заряжена", st_waiting: "ожидание", st_fault: "ошибка",
     solar_today: "солнце", home_sub: "дом без гаража", charge_w: "заряд", discharge_w: "разряд",
     limit: "лимит", input: "ввод", stop: "стоп", protect: "защита",
+    export: "Экспорт", export_now: "Экспорт сейчас",
     cal_title: "Мастер разметки",
     cal_step: "Шаг",
     cal_back: "Назад",
@@ -145,6 +147,7 @@ const I18N = {
     st_charging: "充电中", st_available: "未连接", st_charged: "已充满", st_waiting: "等待", st_fault: "故障",
     solar_today: "光伏", home_sub: "住宅（不含充电）", charge_w: "充电", discharge_w: "放电",
     limit: "限值", input: "进线", stop: "停止", protect: "保护",
+    export: "上网", export_now: "当前上网",
     cal_title: "布局向导",
     cal_step: "步骤",
     cal_back: "上一步",
@@ -315,11 +318,42 @@ class MfBase extends HTMLElement {
 
   has(key) { return !!this._e[key] && !!this._hass?.states[this._e[key]]; }
   st(key) { return this._e[key] ? this._hass?.states[this._e[key]]?.state : undefined; }
-  num(key) { const v = parseFloat(this.st(key)); return Number.isFinite(v) ? v : 0; }
+  raw(key) { const v = parseFloat(this.st(key)); return Number.isFinite(v) ? v : 0; }
+
+  // Normalized values: battery + charge / − discharge; grid + import / − export (whatever the integration reports).
+  num(key) {
+    const c = this._config;
+    if (key === "battery") return this.raw("battery") * (c.invert_battery ? -1 : 1);
+    if (key === "grid") {
+      const g = this.raw("grid") * (c.invert_grid ? -1 : 1);
+      return this._e.grid_export ? g - Math.abs(this.raw("grid_export")) : g;
+    }
+    return this.raw(key);
+  }
+
+  // Charger status in card terms: charging / available / charged / waiting / fault (charger_states maps your values).
+  chargerStatus() {
+    const raw = this.st("charger_status");
+    if (raw === undefined) return undefined;
+    const v = String(raw).toLowerCase();
+    const map = this._config.charger_states || {};
+    for (const [canon, list] of Object.entries(map)) {
+      if ((Array.isArray(list) ? list : [list]).some((x) => String(x).toLowerCase() === v)) return canon;
+    }
+    const aliases = {
+      available: ["available", "disconnected", "unplugged", "not_connected", "no_car", "idle", "standby"],
+      waiting: ["waiting", "connected", "plugged", "plugged_in", "ready", "ready_to_charge", "preparing", "suspended", "paused"],
+      charging: ["charging", "in_progress", "active"],
+      charged: ["charged", "complete", "completed", "finished", "full", "done"],
+      fault: ["fault", "error", "failed", "faulted"],
+    };
+    for (const [canon, list] of Object.entries(aliases)) if (list.includes(v)) return canon;
+    return v;
+  }
 
   gridAmps() {
     const v = this.num("grid_voltage");
-    return this.num("grid") / (v > 90 ? v : Number(this._config.nominal_voltage ?? 230));
+    return Math.abs(this.num("grid")) / (v > 90 ? v : Number(this._config.nominal_voltage ?? 230));
   }
   gridOver() { return this.gridAmps() > Number(this._config.grid_red_amps ?? 16); }
 
@@ -443,8 +477,8 @@ class MfHouseCard extends MfBase {
   }
 
   _plugged() {
-    const cs = this.st("charger_status");
     if (!this._e.charger_status) return this.st("charger") === "on";
+    const cs = this.chargerStatus();
     return cs !== undefined && cs !== "available" && cs !== "unavailable" && cs !== "unknown";
   }
 
@@ -454,7 +488,8 @@ class MfHouseCard extends MfBase {
     const P = this._L.spots, names = this._config.pv_names || ["PV 1", "PV 2"];
     const grid = n("grid"), bat = n("battery"), ev = n("ev");
     const cons = n("consumption"), imp = n("import"), evToday = n("ev_today");
-    const status = t(`st_${this.st("charger_status")}`);
+    const cs = this.chargerStatus();
+    const status = I18N.en[`st_${cs}`] ? t(`st_${cs}`) : (this.st("charger_status") ?? "—");
     const temp = this._hass.states[this._e.weather]?.attributes?.temperature;
     const fresh = this._e.data_fresh ? this.st("data_fresh") === "on" : true;
     const rows = (list) => list.filter(Boolean);
@@ -463,8 +498,8 @@ class MfHouseCard extends MfBase {
         [t("now"), fmtW(n("pv"))],
         this.has("pv1") && [names[0], fmtW(n("pv1"))], this.has("pv2") && [names[1], fmtW(n("pv2"))],
         this.has("yield") && [t("today"), `${st("yield")} kWh`], this.has("peak") && [t("peak"), `${(n("peak") / 1000).toFixed(1)} kW`]]) },
-      grid: this.has("grid") && { at: P.grid, color: this.gridOver() ? COLORS.bad : COLORS.grid, more: "grid", title: t("grid"), rows: rows([
-        [t("now"), fmtW(grid)], [t("current"), `${this.gridAmps().toFixed(1)} A`],
+      grid: this.has("grid") && { at: P.grid, color: this.gridOver() ? COLORS.bad : grid < -20 ? COLORS.ok : COLORS.grid, more: "grid", title: t("grid"), rows: rows([
+        [t(grid < -20 ? "export_now" : "now"), fmtW(Math.abs(grid))], [t("current"), `${this.gridAmps().toFixed(1)} A`],
         this.has("grid_voltage") && [t("voltage"), `${st("grid_voltage")} V`],
         this.has("import") && [t("import_today"), `${st("import")} kWh`]]) },
       home: this.has("home") && { at: P.home, color: COLORS.home, more: "home", title: t("home"), rows: rows([
@@ -523,7 +558,7 @@ class MfHouseCard extends MfBase {
     const img = this._picture();
     const pv = this.num("pv"), home = this.num("home"), ev = this.num("ev"), bat = this.num("battery"), grid = this.num("grid");
     const soc = this.num("soc");
-    const charging = this.st("charger") === "on" && ev > 50;
+    const charging = (this._e.charger_status ? this.chargerStatus() === "charging" || (this.st("charger") === "on" && ev > 50) : this.st("charger") === "on" && ev > 50);
     const plugged = this._plugged();
     const fresh = this._e.data_fresh ? this.st("data_fresh") === "on" : true;
     const anim = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -560,7 +595,7 @@ class MfHouseCard extends MfBase {
 
     // Energy flows: [route, color, power, reverse]
     const flows = [
-      [L.flows.solar, COLORS.solar, pv], [L.flows.grid, COLORS.grid, grid],
+      [L.flows.solar, COLORS.solar, pv], [L.flows.grid, grid < 0 ? COLORS.ok : COLORS.grid, Math.abs(grid), grid < 0],
       [L.flows.battery, COLORS.battery, Math.abs(bat), bat < 0], [L.flows.home, COLORS.home, home], [L.flows.ev, COLORS.ev, ev],
     ];
     flows.forEach(([r, col, w, rev]) => {
@@ -573,10 +608,12 @@ class MfHouseCard extends MfBase {
     });
 
     // Grid power and current above the wire (red above grid_red_amps).
-    if (grid > 20 && L.wire_text) {
+    if (Math.abs(grid) > 20 && L.wire_text) {
       const wire = L.wire_text.map(([x, y]) => [x, y - 20 * k]);
-      const wc = this.gridOver() ? COLORS.bad : "#9cc4ff";
-      const a = this.gridAmps(), label = `◀ ${fmtW(grid)} · ${a < 10 ? a.toFixed(1) : Math.round(a)} A`;
+      // Import: arrow to the house (◀), export: to the pole (▶). The text runs from the house to the pole.
+      const exp = grid < 0, wc = this.gridOver() ? COLORS.bad : exp ? COLORS.ok : "#9cc4ff";
+      const a = this.gridAmps(), val = `${fmtW(Math.abs(grid))} · ${a < 10 ? a.toFixed(1) : Math.round(a)} A`;
+      const label = exp ? `${val} ▶` : `◀ ${val}`;
       s += `<path id="wire-text" d="${route(wire)}" fill="none"/>
         <text ${font} font-size="${30 * k}" font-weight="700" letter-spacing="1">
           <textPath href="#wire-text" startOffset="52%" text-anchor="middle" fill="#000" opacity=".6" filter="url(#g4)">${label}</textPath></text>
@@ -870,7 +907,7 @@ class MfNowCard extends MfBase {
     const limit = c.grid_limit ?? 4000, max = c.grid_max ?? 5750;
     const socStop = c.soc_stop ?? 20, socSafe = c.soc_safe ?? 30;
     const pv = this.num("pv"), home = this.num("home"), grid = this.num("grid"), bat = this.num("battery"), soc = this.num("soc");
-    const gridCol = grid > limit ? COLORS.bad : grid > limit * 0.75 ? COLORS.warn : COLORS.grid;
+    const gridCol = grid < -20 ? COLORS.ok : grid > limit ? COLORS.bad : grid > limit * 0.75 ? COLORS.warn : COLORS.grid;
     const socCol = soc < socSafe ? COLORS.bad : soc < socSafe + 10 ? COLORS.warn : COLORS.battery;
     const ic = (name, color, size) =>
       `<div class="ic" style="width:${size}px;height:${size}px;background:color-mix(in srgb, ${color} 18%, transparent);color:${color}">
@@ -907,8 +944,8 @@ class MfNowCard extends MfBase {
           <div class="tile click" data-entity="home">${ic("home", COLORS.home, 40)}<div><div class="big">${big(home)}</div><div class="sub">${t("home_sub")}</div></div></div>
         </div>
         <div class="row click" data-entity="grid">${ic("grid", gridCol, 32)}<div style="flex:1;min-width:0">
-          <div class="head"><span>${t("grid")}</span><b>${fmtW(grid)}</b></div>
-          <div class="meter"><span style="width:${Math.min(grid / max * 100, 100)}%;background:${gridCol}"></span><i style="left:${limit / max * 100}%"></i></div>
+          <div class="head"><span>${t("grid")}</span><b style="${grid < -20 ? `color:${COLORS.ok}` : ""}">${grid < -20 ? `${t("export")} ` : ""}${fmtW(Math.abs(grid))}</b></div>
+          <div class="meter"><span style="width:${Math.min(Math.abs(grid) / max * 100, 100)}%;background:${gridCol}"></span><i style="left:${limit / max * 100}%"></i></div>
           <div class="lbl"><span>0</span><span>${t("limit")} ${(limit / 1000).toFixed(1)} kW · ${t("input")} ${(max / 1000).toFixed(2)} kW</span></div>
         </div></div>
         <div class="row click ${Math.abs(bat) > 50 ? (bat > 0 ? "chg" : "dis") : ""}" data-entity="soc" style="--pdur:${Math.max(0.9, 2.6 - Math.abs(bat) / 1500).toFixed(2)}s">${ic("bat", bat < -50 ? COLORS.bad : COLORS.battery, 32)}<div style="flex:1;min-width:0">
@@ -1075,7 +1112,8 @@ class MfDayChart extends MfChartBase {
           while (j < pts.length && pts[j][0] < z) { if (pts[j][0] >= a) acc.push(pts[j][1]); carry = pts[j][1]; j++; }
           out[b] = acc.length ? acc.reduce((x, y) => x + y, 0) / acc.length : carry;
         }
-        this._series[k] = out;
+        const sign = (k === "grid" && this._config.invert_grid) || (k === "battery" && this._config.invert_battery) ? -1 : 1;
+        this._series[k] = out.map((v) => (v == null ? v : v * sign));
       });
       this._last = last;
     } catch (e) {
@@ -1093,7 +1131,8 @@ class MfDayChart extends MfChartBase {
     const L = 30, R = 36, T = 18, B = 22, pw = W - L - R, ph = H - T - B, N = 288;
     const vals = ["pv", "ev", "load", "grid"].flatMap((k) => S[k] || []).filter((v) => v != null);
     const top = Math.max(1, Math.ceil(Math.max(...vals, 0) / 1000));
-    const X = (i) => L + pw * (i + 0.5) / N, Y = (w) => T + ph - ph * (w / 1000) / top, Ys = (p) => T + ph - ph * p / 100;
+    const bot = Math.min(0, Math.floor(Math.min(...vals, 0) / 1000));   // export goes below zero
+    const X = (i) => L + pw * (i + 0.5) / N, Y = (w) => T + ph - ph * (w / 1000 - bot) / (top - bot), Ys = (p) => T + ph - ph * p / 100;
     const muted = "var(--secondary-text-color)", line = "var(--divider-color, rgba(128,128,128,.25))";
     const series = [
       { k: "pv", name: t("solar"), c: COLORS.solar, area: .22 }, { k: "ev", name: t("car"), c: COLORS.ev, area: .28 },
@@ -1102,7 +1141,7 @@ class MfDayChart extends MfChartBase {
     ].filter((sr) => S[sr.k]);
     let s = `<svg viewBox="0 0 ${W} ${H}" height="${H}">`;
     const stepKw = top > 6 ? 2 : 1;
-    for (let k = 0; k <= top; k += stepKw) {
+    for (let k = bot; k <= top; k += stepKw) {
       s += `<line x1="${L}" x2="${W - R}" y1="${Y(k * 1000)}" y2="${Y(k * 1000)}" stroke="${line}"/>`;
       s += `<text x="${L - 6}" y="${Y(k * 1000) + 4}" text-anchor="end" font-size="11" fill="${muted}">${k}</text>`;
     }
@@ -1139,6 +1178,11 @@ class MfDaysChart extends MfChartBase {
   getCardSize() { return 5; }
   _render() {}
 
+  _total(k) {
+    const t = this._config.total_counters;
+    return t === true || (Array.isArray(t) && t.includes(k));
+  }
+
   async _load() {
     if (!this._hass) return;
     const days = this._config.days ?? 14;
@@ -1149,7 +1193,7 @@ class MfDaysChart extends MfChartBase {
       // "state" for daily counters: value at the end of the day (`change` overcounts on counter resets).
       const res = await this._hass.callWS({
         type: "recorder/statistics_during_period", start_time: start.toISOString(), end_time: end.toISOString(),
-        statistic_ids: ids, period: "day", types: ["state"],
+        statistic_ids: ids, period: "day", types: ["state", "change"],
       });
       const rows = [];
       for (let d = 0; d < days; d++) {
@@ -1159,11 +1203,13 @@ class MfDaysChart extends MfChartBase {
       keys.forEach((k, idx) => (res[ids[idx]] || []).forEach((p) => {
         const ts = typeof p.start === "number" ? p.start : Date.parse(p.start);
         const d = Math.round((ts - start.getTime()) / 86400000);
-        if (rows[d] && p.state != null) rows[d].v[k] = p.state;
+        // total_counters: lifetime counters → change per day; otherwise daily counters → value at the end of the day.
+        const val = this._total(k) ? p.change : p.state;
+        if (rows[d] && val != null) rows[d].v[k] = val;
       }));
       // Today is not closed in statistics yet — take the live counters
       const today = rows[rows.length - 1];
-      keys.forEach((k) => { const v = this.num(k); if (v) today.v[k] = v; });
+      keys.forEach((k) => { const v = this.num(k); if (v && !this._total(k)) today.v[k] = v; });
       this._rows = rows;
       this._keys = keys;
     } catch (e) {
