@@ -92,6 +92,7 @@ Every entity is optional: anything you leave out hides the related layer, dot or
 | `panel_max_w` | `2800` | Panel row power for full glow |
 | `pv_names` | `["PV 1", "PV 2"]` | Names of panel rows / inverters |
 | `car_name` | `Car` | Title of the car plate |
+| `show_home_text` | `true` | Home consumption in front of the door |
 | `show_temperatures` | `true` | Temperature block in the corner |
 | `phone_crop` | on | `false` — show the full picture on phones |
 | `language` | HA profile | `en`, `ru`, `zh` |

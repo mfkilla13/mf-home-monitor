@@ -15,7 +15,7 @@
  * Languages: en, ru, zh (from HA profile or `language:`).
  */
 
-const VERSION = "1.1.0";
+const VERSION = "1.2.0";
 
 // ─── Languages ───────────────────────────────────────────────────────────────
 
@@ -73,6 +73,7 @@ const I18N = {
     s_charger_ring: "Wall box light ring",
     s_cable: "Charging cable: wall box → car",
     s_amps_text: "Charging current label (in front of the car)",
+    s_home_text: "Home consumption label (in front of the door)",
     s_temps: "Temperature block (top-left corner of it)",
     s_phone_crop: "Phone view: area with the house",
   },
@@ -129,6 +130,7 @@ const I18N = {
     s_charger_ring: "Световое кольцо станции",
     s_cable: "Кабель зарядки: станция → машина",
     s_amps_text: "Надпись тока (перед машиной)",
+    s_home_text: "Надпись потребления дома (перед дверью)",
     s_temps: "Блок температур (его левый верхний угол)",
     s_phone_crop: "Вид на телефоне: область с домом",
   },
@@ -185,6 +187,7 @@ const I18N = {
     s_charger_ring: "充电桩灯环",
     s_cable: "充电线：充电桩 → 汽车",
     s_amps_text: "充电电流标签（车前）",
+    s_home_text: "住宅用电标签（门前）",
     s_temps: "温度区块（其左上角）",
     s_phone_crop: "手机视图：住宅所在区域",
   },
@@ -226,6 +229,8 @@ const DEFAULT_LAYOUT = {
   cable: "M1442 553 C1440 600 1432 632 1405 629 C1378 626 1382 578 1392 531",
   // Charging current: standing "hologram" in front of the bumper — x along the car front, y vertical.
   amps_text: [1115, 716], amps_text_matrix: [0.985, 0.17, 0, 1], amps_ground: [1118, 760, 105, 16],
+  // Home consumption: the same standing label on the steps in front of the door.
+  home_text: [560, 676], home_text_matrix: [0.995, 0.09, 0, 1], home_ground: [560, 700, 95, 15],
   spots: {
     solar: [1040, 262], grid: [1563, 300], home: [640, 448], inverters: [952, 412], battery: [1030, 560],
     charger: [1458, 506], car: [1250, 478], street: [320, 640],
@@ -242,7 +247,7 @@ const CAL_STEPS = [
   ["panels_0", "quad"], ["panels_1", "quad"],
   ["flows_solar", "line"], ["flows_grid", "line"], ["wire_text", "line"], ["flows_battery", "line"], ["flows_home", "line"], ["flows_ev", "line"],
   ["inverter_leds", "multi"], ["battery_outline", "quad"], ["battery_text", "point"],
-  ["charger_ring", "rect"], ["cable", "line"], ["amps_text", "point"], ["temps", "point"], ["phone_crop", "rect"],
+  ["charger_ring", "rect"], ["cable", "line"], ["amps_text", "point"], ["home_text", "point"], ["temps", "point"], ["phone_crop", "rect"],
 ];
 
 // Calibration taps → layout keys (only the steps that were done).
@@ -266,6 +271,7 @@ function calToLayout(cal, size) {
     else if (key === "charger_ring") L.charger_ring = [pts[0][0], pts[0][1], pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]];
     else if (key === "cable") L.cable = "M" + pts.map((p) => p.join(" ")).join(" L");
     else if (key === "amps_text") { L.amps_text = pts[0]; L.amps_ground = [pts[0][0], pts[0][1] + 44, 105, 16]; }
+    else if (key === "home_text") { L.home_text = pts[0]; L.home_ground = [pts[0][0], pts[0][1] + 24, 95, 15]; }
     else if (key === "temps") L.temps = [+(pts[0][0] / size[0] * 100).toFixed(1), +(pts[0][1] / size[1] * 100).toFixed(1)];
     else if (key === "phone_crop") L.phone_crop = [pts[0][0], pts[0][1], pts[1][0], pts[1][1]];
     else if (key === "battery_text") L.battery_text = pts[0];
@@ -663,6 +669,21 @@ class MfHouseCard extends MfBase {
         <text font-size="${54 * k}" font-weight="700" fill="#4ef0a0" opacity=".7" filter="url(#g4)">${amps}</text>
         <text font-size="${54 * k}" font-weight="700" fill="#d8ffec" stroke="#4ef0a0" stroke-width="1">${amps}</text>
         <text y="${30 * k}" font-size="${21 * k}" font-weight="600" fill="#a6ffd2" opacity=".9">${fmtW(ev)}</text></g>`;
+    }
+    // Home consumption: standing label in front of the door (big power, current below).
+    if (L.home_text && this.has("home") && this._config.show_home_text !== false && home > 20) {
+      const v = this.num("grid_voltage"), ha = home / (v > 90 ? v : Number(this._config.nominal_voltage ?? 230));
+      const amps = `${ha < 10 ? ha.toFixed(1) : Math.round(ha)} A`;
+      if (L.home_ground) {
+        const [gx, gy, grx, gry] = L.home_ground;
+        s += `<ellipse cx="${gx}" cy="${gy}" rx="${grx * k}" ry="${gry * k}" fill="${COLORS.home}" opacity=".4" filter="url(#g12)"/>`;
+      }
+      s += `<g transform="${mtx(L.home_text_matrix, L.home_text)}" ${font} text-anchor="middle">
+        <text font-size="${50 * k}" font-weight="700" fill="#000" opacity=".35" filter="url(#g4)">${fmtW(home)}</text>
+        <text font-size="${50 * k}" font-weight="700" fill="${COLORS.home}" opacity=".7" filter="url(#g4)">${fmtW(home)}</text>
+        <text font-size="${50 * k}" font-weight="700" fill="#e2fbf6" stroke="${COLORS.home}" stroke-width="1">${fmtW(home)}</text>
+        <text y="${28 * k}" font-size="${20 * k}" font-weight="700" fill="#000" opacity=".6" filter="url(#g4)">${amps}</text>
+        <text y="${28 * k}" font-size="${20 * k}" font-weight="700" fill="#d6fbf3">${amps}</text></g>`;
     }
     s += "</svg>";
 

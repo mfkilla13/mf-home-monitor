@@ -92,6 +92,7 @@ entities:
 | `panel_max_w` | `2800` | 光伏板一排达到满亮度的功率 |
 | `pv_names` | `["PV 1", "PV 2"]` | 光伏板排 / 逆变器名称 |
 | `car_name` | `汽车` | 汽车信息框标题 |
+| `show_home_text` | `true` | 门前显示住宅用电 |
 | `show_temperatures` | `true` | 角落里的温度区块 |
 | `phone_crop` | 开 | `false` —— 手机上显示完整图片 |
 | `language` | HA 用户资料 | `en`、`ru`、`zh` |
