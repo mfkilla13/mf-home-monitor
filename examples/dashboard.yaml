@@ -1,0 +1,114 @@
+# MF Home Monitor — example dashboard (sections view).
+# Replace the entity IDs with your own. Keys you leave out simply hide the related layer, spot or row.
+# Pictures: copy /images/*.jpg to /config/www/mf-home-monitor/
+title: Home
+views:
+  - title: Overview
+    path: overview
+    icon: mdi:home-lightning-bolt
+    type: sections
+    max_columns: 4
+    dense_section_placement: true
+    sections:
+      - type: grid
+        column_span: 4
+        cards:
+          - type: custom:mf-badges-card
+            items:
+              - entity: sensor.solar_energy_today
+                name: Solar today
+                icon: mdi:solar-power-variant
+                color: "#f5b042"
+              - entity: sensor.home_energy_today
+                name: Consumption
+                icon: mdi:home-lightning-bolt-outline
+                color: "#4fc3b0"
+              - entity: sensor.grid_import_today
+                name: Import
+                icon: mdi:transmission-tower-import
+                color: "#5b9cf5"
+              - name: Battery in / out
+                icon: mdi:battery-sync-outline
+                color: "#7bd389"
+                entities: [sensor.battery_charge_today, sensor.battery_discharge_today]
+                format: "+{0} / −{1} kWh"
+              - name: Self-sufficiency
+                icon: mdi:sun-angle
+                color: "#f5b042"
+                entities: [sensor.home_energy_today, sensor.grid_import_today]
+                format: self
+          - type: custom:mf-house-card
+            frameless: true            # pictures have a #111111 background — same as the HA dark theme
+            no_car_images: true        # car not plugged in → *_nocar.jpg pictures
+            image_night: /local/mf-home-monitor/house_night.jpg
+            image_day: /local/mf-home-monitor/house_day.jpg
+            image_winter_night: /local/mf-home-monitor/house_winter_night.jpg
+            image_winter_day: /local/mf-home-monitor/house_winter_day.jpg
+            image_rain_night: /local/mf-home-monitor/house_rain_night.jpg
+            image_rain_day: /local/mf-home-monitor/house_rain_day.jpg
+            winter_months: [12, 1, 2]
+            snow_below: 1              # while it rains: ≤ +1 °C shows snow, warmer — rain
+            grid_red_amps: 16          # grid label turns red above this current
+            fit_offset: 160            # desktop: height of everything above/below the picture
+            pv_names: ["PV 1", "PV 2"]
+            car_name: My car
+            # language: en             # en | ru | zh — default: your HA profile language
+            entities: &entities
+              pv: sensor.pv_power                       # W, total
+              pv1: sensor.pv1_power                     # W, upper panel row
+              pv2: sensor.pv2_power                     # W, lower panel row
+              grid: sensor.grid_power                   # W, import ≥ 0
+              grid_voltage: sensor.grid_voltage         # V, for amps on the wire
+              battery: sensor.battery_power             # W, + charging / − discharging
+              soc: sensor.battery_soc                   # %
+              voltage: sensor.battery_voltage           # V
+              home: sensor.home_power                   # W, home without the EV
+              load: sensor.load_power                   # W, total load (day chart)
+              ev: sensor.ev_charger_power               # W
+              yield: sensor.solar_energy_today          # kWh, daily counter
+              peak: sensor.pv_peak_today                # W
+              import: sensor.grid_import_today          # kWh, daily counter
+              consumption: sensor.home_energy_today     # kWh, daily counter
+              charge_today: sensor.battery_charge_today
+              discharge_today: sensor.battery_discharge_today
+              ev_today: sensor.ev_energy_today          # kWh, daily counter
+              charger: switch.ev_charger
+              charger_status: sensor.ev_charger_status  # charging / available / charged / waiting / fault
+              charger_current: number.ev_charger_current
+              charger_temp: sensor.ev_charger_temperature
+              t1: sensor.inverter1_temperature
+              t2: sensor.inverter2_temperature
+              bat_tmin: sensor.battery_min_cell_temperature
+              bat_tmax: sensor.battery_max_cell_temperature
+              lux: sensor.outdoor_illuminance
+              rain: binary_sensor.rain
+              weather: weather.home
+              # outdoor_temp: sensor.outdoor_temperature   # instead of weather temperature
+              # data_fresh: binary_sensor.inverter_data_ok
+              # auto: input_boolean.ev_auto_charge
+              # ev_mode: sensor.ev_mode
+              # ev_state: sensor.ev_state
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Now
+          - type: custom:mf-now-card
+            entities: *entities
+            grid_limit: 4000         # W, yellow/red
+            grid_max: 5750           # W, main breaker (25 A × 230 V)
+            soc_stop: 20
+            soc_safe: 30
+
+      - type: grid
+        column_span: 4
+        cards:
+          - type: heading
+            heading: Today
+          - type: custom:mf-day-chart
+            entities: *entities
+            height: 260
+          - type: custom:mf-days-chart
+            entities: *entities
+            days: 21
+            height: 240
